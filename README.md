@@ -22,9 +22,9 @@ Install
 
 	go get github.com/turbobytes/gomr
 
-The following environment variables need to be set.
+The following environment variables need to be set. Adjust accordingly.
 
-	export S3_BUCKET=gomr  #S3 bucket we will use for this. Its best to use a dedicated bucket.
+	export S3_BUCKET=gomr  #Existing S3 bucket we will use for this. Its best to use a dedicated bucket.
 	export ETCD_SERVERS="http://127.0.0.1:2379" #Comma separated list of etcd servers
 	export AWS_REGION=ap-southeast-1 #AWS Region
 	export AWS_SECRET_ACCESS_KEY="xxxxxxxxxxxxxx"
@@ -34,8 +34,9 @@ The following environment variables need to be set.
 ## Example
 
 [examples/word_count.go](examples/word_count.go) is an example implementation.
+[examples/word_count_execute.go](examples/word_count_execute.go) is the way to submit the task to the cluster.
 
-In one(or multiple) terminal(s) launch the worker process
+In one(or multiple) terminal(s) launch the worker process, can be launched anywhere that has access to the etcd cluster and S3.
 
 	go run $GOPATH/src/github.com/turbobytes/gomr/cli/worker.go
 
