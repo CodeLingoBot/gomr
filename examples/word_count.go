@@ -29,6 +29,7 @@ func MyMap(input string, job *gomr.Job) (map[int]string, error) {
 	outputs := make(map[int]string)
 	var err error
 	log.Println("Rinning map on ", input)
+	//Create one TempFile for each partition
 	tmpfiles := make([]*os.File, job.Partitions)
 	for i, _ := range tmpfiles {
 		tmpfiles[i], err = ioutil.TempFile("", "")
@@ -36,7 +37,7 @@ func MyMap(input string, job *gomr.Job) (map[int]string, error) {
 			return outputs, err
 		}
 	}
-
+	//Fetch the input url
 	resp, err := http.Get(input)
 	if err != nil {
 		return outputs, err
@@ -44,13 +45,14 @@ func MyMap(input string, job *gomr.Job) (map[int]string, error) {
 	defer resp.Body.Close()
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Split(bufio.ScanWords)
+	//Map each instance of a word with 1, use FNV hash to write it to its corresponding partition file
 	for scanner.Scan() {
 		word := scanner.Text()
 		//TODO: Maybe make everything lowercase... and check if its really a "word"
 		partition := hash(word, job.Partitions)
 		fmt.Fprintf(tmpfiles[partition], "%s\t1\n", word)
 	}
-
+	//Close each TempFile and upload to S3
 	for i, f := range tmpfiles {
 		f.Close()
 		newpath, err := job.UploadMapS3(f.Name(), i)
@@ -59,6 +61,7 @@ func MyMap(input string, job *gomr.Job) (map[int]string, error) {
 		}
 		outputs[i] = newpath
 	}
+	//Return the list of S3 files
 	return outputs, nil
 }
 
@@ -83,7 +86,7 @@ func MyReduce(inputs []string, partition int, job *gomr.Job) (string, error) {
 		rd.Close()
 	}
 	f.Close()
-	//Sort local file by word ... using the sort unix command
+	//Sort local file by word ... using the sort unix command.. We need lines for each word bunched together
 	cmd := exec.Command("sort", fname)
 	sorted, err := ioutil.TempFile("", "")
 	cmd.Stdout = sorted
@@ -96,6 +99,7 @@ func MyReduce(inputs []string, partition int, job *gomr.Job) (string, error) {
 	log.Println("sorted", sortedfname)
 	//The merged file is no longer needed cause we now use the sorted file.
 	os.Remove(fname)
+	//Create file for final output
 	output, err := ioutil.TempFile("", "")
 	if err != nil {
 		return "", err
@@ -133,10 +137,12 @@ func MyReduce(inputs []string, partition int, job *gomr.Job) (string, error) {
 	os.Remove(sortedfname)
 	outname := output.Name()
 	output.Close()
+	//Upload output to S3 and return the key
 	return job.UploadResultS3(outname)
 }
 
 func main() {
+	//Boilerplate to actualy execute the job on a worker
 	jobname := os.Args[1]
 	w := &gomr.Worker{
 		Map:    MyMap,
