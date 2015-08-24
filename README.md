@@ -11,9 +11,9 @@ This repository is work in progress.
 
 ## Components
 
-1. etcd server/cluster - I have only tested with single etcd server so faw
+1. etcd server/cluster - I have only tested with single etcd server so far.
 2. AWS S3 - Currently I only support AWS S3, but its relatively easy to support S3 clones.
-3. workers - These wait for some task to be done, and fulfill them accordingly
+3. workers - These wait for some task to be done, and fulfill them accordingly.
 4. The user
 
 ## Environment 
