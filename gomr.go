@@ -1,6 +1,7 @@
 package gomr
 
 import (
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"github.com/mitchellh/goamz/s3"
 	"github.com/satori/go.uuid"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"strconv"
@@ -28,6 +30,23 @@ const (
 type Worker struct {
 	Map    func(input string, job *Job) (map[int]string, error)
 	Reduce func(inputs []string, partition int, job *Job) (string, error)
+}
+
+func gzipfile(fname string, output io.WriteCloser) error {
+	input, err := os.Open(fname)
+	if err != nil {
+		return err
+	}
+	writer := gzip.NewWriter(output)
+	_, err = io.Copy(writer, input)
+	if err != nil {
+		return err
+	}
+	writer.Close()
+	output.Close()
+	input.Close()
+	os.Remove(fname)
+	return nil
 }
 
 type Job struct {
@@ -117,7 +136,12 @@ func (j *Job) FetchResults(fname string) error {
 		if err != nil {
 			return err
 		}
-		_, err = io.Copy(f, rd)
+		gzrd, err := gzip.NewReader(rd)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(f, gzrd)
+		gzrd.Close()
 		rd.Close()
 	}
 	return nil
@@ -205,16 +229,23 @@ func uploads3fileifnotexists(binpath, binfile, contenttype string, bucket *s3.Bu
 	return nil
 }
 
-//Helper function to upload map output to s3
-func (j *Job) UploadMapS3(fname string, partition int) (string, error) {
+//Compress and upload output to given path. deleting the source file
+func (j *Job) uploadoutput(fname string, path string) (string, error) {
 	env := NewEnvironment()
 	bucket, err := env.GetS3Bucket(j.S3Bucket)
 	if err != nil {
 		return "", err
 	}
-	path := fmt.Sprintf("%smaps/%d-%s", j.S3Prefix, partition, uuid.NewV4())
-	//TODO: Gzip
-	err = uploads3file(path, fname, "", bucket) //TODO.. content type
+	//Gzip
+	gzfile, err := ioutil.TempFile("", "")
+	if err != nil {
+		return "", err
+	}
+	err = gzipfile(fname, gzfile)
+	if err != nil {
+		return "", err
+	}
+	err = uploads3file(path, gzfile.Name(), "application/x-gzip", bucket)
 	if err != nil {
 		return "", err
 	}
@@ -223,22 +254,14 @@ func (j *Job) UploadMapS3(fname string, partition int) (string, error) {
 	return path, nil
 }
 
+//Helper function to upload map output to s3
+func (j *Job) UploadMapS3(fname string, partition int) (string, error) {
+	return j.uploadoutput(fname, fmt.Sprintf("%smaps/%d-%s", j.S3Prefix, partition, uuid.NewV4()))
+}
+
 //Helper function to upload reduce output to s3
 func (j *Job) UploadResultS3(fname string) (string, error) {
-	env := NewEnvironment()
-	bucket, err := env.GetS3Bucket(j.S3Bucket)
-	if err != nil {
-		return "", err
-	}
-	path := fmt.Sprintf("%sresults/%s", j.S3Prefix, uuid.NewV4())
-	//TODO: Gzip
-	err = uploads3file(path, fname, "", bucket) //TODO.. content type
-	if err != nil {
-		return "", err
-	}
-	//Delete the temporary file...
-	os.Remove(fname)
-	return path, nil
+	return j.uploadoutput(fname, fmt.Sprintf("%sresults/%s", j.S3Prefix, uuid.NewV4()))
 }
 
 func (j *Job) FetchInputS3(path string) (rc io.ReadCloser, err error) {
@@ -247,7 +270,11 @@ func (j *Job) FetchInputS3(path string) (rc io.ReadCloser, err error) {
 	if err != nil {
 		return nil, err
 	}
-	return bucket.GetReader(path)
+	rd, err := bucket.GetReader(path)
+	if err != nil {
+		return nil, err
+	}
+	return gzip.NewReader(rd)
 }
 
 //Deploy job things to S3 and initialize etcd keys.

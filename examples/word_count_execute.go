@@ -17,7 +17,7 @@ func main() {
 		Partitions: 5,
 		S3Bucket:   "", //Its blank... so will be picked up from envoirnment
 	}
-	name, err := j.Deploy("word_count")
+	name, err := j.Deploy("word_count") //here word_count is the path to the executable we just built
 	if err != nil {
 		log.Fatal(err)
 	}
