@@ -52,7 +52,15 @@ func execute(binpath, jobname, bucketname string) {
 			var rawb bytes.Buffer
 			var datab bytes.Buffer
 			_, err = rawb.Write(raw)
+			if err != nil {
+				log.Println(err)
+				return
+			}
 			rd, err := gzip.NewReader(&rawb)
+			if err != nil {
+				log.Println(err)
+				return
+			}
 			io.Copy(&datab, rd)
 			rd.Close()
 			data := datab.Bytes()
