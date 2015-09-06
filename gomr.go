@@ -60,6 +60,8 @@ type Job struct {
 	S3Bucket   string                 //S3 Bucket name
 	S3Prefix   string                 // /Job.Name/ gets appended
 	BinaryFile string                 //Path to binary file - auto created
+	NumMaps    int                    //Number of inputs for map stage a.k.a. len(Inputs)
+	NumReduces int                    //Number of inputs for reduce stage - populated once all map have finished
 }
 
 func FetchJob(jobname string) (*Job, error) {
@@ -291,6 +293,7 @@ func (j *Job) Deploy(binfile string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	//Upload binary to s3...
 	env := NewEnvironment()
 	if j.S3Bucket == "" {
@@ -306,6 +309,9 @@ func (j *Job) Deploy(binfile string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	//Calculate NumMaps
+	j.NumMaps = len(j.Inputs)
 
 	//Upload job json to s3...
 	//TODO: Gzip before upload...
@@ -348,6 +354,18 @@ func (j *Job) Deploy(binfile string) (string, error) {
 
 	//S3 prefix
 	_, err = cl.Create(eprefix+"s3prefix", j.S3Prefix, 0)
+	if err != nil {
+		return "", err
+	}
+
+	//Store NumMaps
+	_, err = cl.Create(eprefix+"nummaps", strconv.Itoa(j.NumMaps), 0)
+	if err != nil {
+		return "", err
+	}
+
+	//Store NumReduces - this will be 0 for now
+	_, err = cl.Create(eprefix+"numreduces", strconv.Itoa(j.NumReduces), 0)
 	if err != nil {
 		return "", err
 	}
@@ -511,7 +529,13 @@ func (w *Worker) Execute(jobname string) {
 		}
 	}
 	log.Println("Map phase completed, now onto Reduce...")
-	log.Println(reduceinputs)
+
+	//Update NumReduces
+	_, err = cl.Update(eprefix+"numreduces", strconv.Itoa(len(reduceinputs)), 0)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for i, inputs := range reduceinputs {
 		_, err = cl.CreateDir(eprefix+"reduce/"+strconv.Itoa(i)+"/", 0)
 		if err == nil {
