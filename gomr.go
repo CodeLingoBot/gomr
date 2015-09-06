@@ -283,8 +283,8 @@ func (j *Job) FetchInputS3(path string) (rc io.ReadCloser, err error) {
 func (j *Job) Deploy(binfile string) (string, error) {
 	u := uuid.NewV4()
 	prefix := ""
-	if j.Name != "" {
-		prefix = j.Name + "-"
+	if j.NamePrefix != "" {
+		prefix = j.NamePrefix + "-"
 	}
 	j.Name = fmt.Sprintf("%s%s", prefix, u)
 	//Get name of binary file
