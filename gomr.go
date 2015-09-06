@@ -45,7 +45,7 @@ func gzipfile(fname string, output io.WriteCloser) error {
 	writer.Close()
 	output.Close()
 	input.Close()
-	os.Remove(fname)
+	//os.Remove(fname)
 	return nil
 }
 
@@ -225,10 +225,27 @@ func uploads3file(path, file, contenttype string, bucket *s3.Bucket) error {
 func uploads3fileifnotexists(binpath, binfile, contenttype string, bucket *s3.Bucket) error {
 	k, _ := bucket.GetKey(binpath)
 	if k == nil {
-		//Binary does not exist on s3.. upload it now...
-		return uploads3file(binpath, binfile, contenttype, bucket)
+		//Binary does not exist on s3.. gzip and upload it now...
+		finalfile, err := gziptotempfile(binfile)
+		if err != nil {
+			return err
+		}
+		return uploads3file(binpath, finalfile, "application/x-gzip", bucket)
 	}
 	return nil
+}
+
+//Gzip given filename, return path to gzipped file
+func gziptotempfile(fname string) (string, error) {
+	gzfile, err := ioutil.TempFile("", "")
+	if err != nil {
+		return "", err
+	}
+	err = gzipfile(fname, gzfile)
+	if err != nil {
+		return "", err
+	}
+	return gzfile.Name(), nil
 }
 
 //Compress and upload output to given path. deleting the source file
@@ -247,6 +264,7 @@ func (j *Job) uploadoutput(fname string, path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	os.Remove(fname)
 	err = uploads3file(path, gzfile.Name(), "application/x-gzip", bucket)
 	if err != nil {
 		return "", err

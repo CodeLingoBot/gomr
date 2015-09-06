@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"github.com/turbobytes/gomr"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -40,11 +43,20 @@ func execute(binpath, jobname, bucketname string) {
 				log.Println(err)
 				return
 			}
-			data, err := s3bucket.Get(binpath)
+			raw, err := s3bucket.Get(binpath)
 			if err != nil {
 				log.Println(err)
 				return
 			}
+			//Uncompress the contents
+			var rawb bytes.Buffer
+			var datab bytes.Buffer
+			_, err = rawb.Write(raw)
+			rd, err := gzip.NewReader(&rawb)
+			io.Copy(&datab, rd)
+			rd.Close()
+			data := datab.Bytes()
+
 			f, err := os.Create(bin)
 			if err != nil {
 				log.Println(err)
