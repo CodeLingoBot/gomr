@@ -66,6 +66,29 @@ type Job struct {
 	CreatedAt  time.Time              //Timestamp of when the Job was initially submitted - used for sorting
 }
 
+//Fetch all jobs, but only their status is populated, this is done to not access S3 where the real initial job is stored
+func FetchAllJobs() ([]*Job, error) {
+	jobs := []*Job{}
+	env := NewEnvironment()
+	cl := env.GetEtcdClient()
+	resp, err := cl.Get("/gomr/", false, true)
+	if err != nil {
+		return jobs, err
+	}
+	for _, node := range resp.Node.Nodes {
+		splitted := strings.Split(node.Key, "/")
+		if len(splitted) == 3 {
+			j := &Job{Name: splitted[2]}
+			err = j.UpdateStatus()
+			if err != nil {
+				return jobs, err
+			}
+			jobs = append(jobs, j)
+		}
+	}
+	return jobs, nil
+}
+
 func FetchJob(jobname string) (*Job, error) {
 	j := &Job{}
 	env := NewEnvironment()
@@ -146,7 +169,7 @@ func (j *Job) UpdateStatus() error {
 	if err != nil {
 		return err
 	}
-	j.CreatedAt, err = time.Parse(resp.Node.Value, time.RFC3339)
+	j.CreatedAt, err = time.Parse(time.RFC3339, resp.Node.Value)
 	if err != nil {
 		return err
 	}
