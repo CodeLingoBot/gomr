@@ -97,17 +97,47 @@ func FetchJob(jobname string) (*Job, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	//Populate status info
-	resp, err = cl.Get(eprefix+"status", false, false)
+	err = j.UpdateStatus()
 	if err != nil {
 		return nil, err
+	}
+	return j, nil
+}
+
+//Update Job Status
+func (j *Job) UpdateStatus() error {
+	//Populate status info
+	env := NewEnvironment()
+	//Get job data
+	cl := env.GetEtcdClient()
+	eprefix := "/gomr/" + j.Name + "/"
+	resp, err := cl.Get(eprefix+"status", false, false)
+	if err != nil {
+		return err
 	}
 	status, err := strconv.Atoi(resp.Node.Value)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	j.Status = status
+	//Populate NumMaps and NumReduces
+	resp, err = cl.Get(eprefix+"nummaps", false, false)
+	if err != nil {
+		return err
+	}
+	j.NumMaps, err = strconv.Atoi(resp.Node.Value)
+	if err != nil {
+		return err
+	}
+	//Populate NumMaps and NumReduces
+	resp, err = cl.Get(eprefix+"numreduces", false, false)
+	if err != nil {
+		return err
+	}
+	j.NumReduces, err = strconv.Atoi(resp.Node.Value)
+	if err != nil {
+		return err
+	}
 	//Populate results
 	if status == StatusDone {
 		resp, err = cl.Get(eprefix+"results", false, false)
@@ -115,9 +145,8 @@ func FetchJob(jobname string) (*Job, error) {
 			//log.Println(node.Key, node.Value)
 			j.Results = append(j.Results, node.Value)
 		}
-
 	}
-	return j, nil
+	return nil
 }
 
 //Fetch results of this job into localfile
@@ -480,7 +509,13 @@ func (w *Worker) Execute(jobname string) {
 		if err == nil {
 			//Means we could create it, nobody else has it
 			log.Println("Aquired lock for map task ", i)
-			//Update Status
+			//Update Status - we are obviously in map phase
+			_, err = cl.Update(eprefix+"status", strconv.Itoa(StatusMapStage), 0)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			//Create task status
 			_, err = cl.Create(eprefix+"map/"+strconv.Itoa(i)+"/"+"status", strconv.Itoa(StatusInitialized), 0)
 			if err != nil {
 				log.Fatal(err)
@@ -559,6 +594,12 @@ func (w *Worker) Execute(jobname string) {
 		if err == nil {
 			//Meaning we aquired lock for this phase...
 			log.Println("Aquired lock for reduce task", i)
+			//Update Status - we are obviously in map phase
+			_, err = cl.Update(eprefix+"status", strconv.Itoa(StatusReduceStage), 0)
+			if err != nil {
+				log.Fatal(err)
+			}
+
 			//Update Status
 			_, err = cl.Create(eprefix+"reduce/"+strconv.Itoa(i)+"/"+"status", strconv.Itoa(StatusInitialized), 0)
 			if err != nil {
