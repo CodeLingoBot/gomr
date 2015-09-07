@@ -17,6 +17,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -62,6 +63,7 @@ type Job struct {
 	BinaryFile string                 //Path to binary file - auto created
 	NumMaps    int                    //Number of inputs for map stage a.k.a. len(Inputs)
 	NumReduces int                    //Number of inputs for reduce stage - populated once all map have finished
+	CreatedAt  time.Time              //Timestamp of when the Job was initially submitted - used for sorting
 }
 
 func FetchJob(jobname string) (*Job, error) {
@@ -138,6 +140,17 @@ func (j *Job) UpdateStatus() error {
 	if err != nil {
 		return err
 	}
+
+	//Update CreatedAt, in-case this is not the full S3 json
+	resp, err = cl.Get(eprefix+"createdat", false, false)
+	if err != nil {
+		return err
+	}
+	j.CreatedAt, err = time.Parse(resp.Node.Value, time.RFC3339)
+	if err != nil {
+		return err
+	}
+
 	//Populate results
 	if status == StatusDone {
 		resp, err = cl.Get(eprefix+"results", false, false)
@@ -357,6 +370,9 @@ func (j *Job) Deploy(binfile string) (string, error) {
 		return "", err
 	}
 
+	//Insert timestamp
+	j.CreatedAt = time.Now()
+
 	//Calculate NumMaps
 	j.NumMaps = len(j.Inputs)
 
@@ -401,6 +417,12 @@ func (j *Job) Deploy(binfile string) (string, error) {
 
 	//S3 prefix
 	_, err = cl.Create(eprefix+"s3prefix", j.S3Prefix, 0)
+	if err != nil {
+		return "", err
+	}
+
+	//Store CreatedAt
+	_, err = cl.Create(eprefix+"createdat", j.CreatedAt.Format(time.RFC3339), 0)
 	if err != nil {
 		return "", err
 	}
