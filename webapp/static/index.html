@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html ng-app="gomr"  ng-controller="MainController">
+<head>
+	<title>gomr web UI</title>
+	<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.3.15/angular.min.js"></script>
+	<style>
+#wrapper {
+  margin-right: 400px;
+}
+#content {
+  float: left;
+  width: 100%;
+}
+#sidebar {
+  float: right;
+  width: 400px;
+  margin-right: -400px;
+}
+#cleared {
+  clear: both;
+}
+.jobsummary {
+	font-size: 90%;
+	border: solid;
+	border-width: 1px;
+}
+.summary {
+	float: left;
+	border: solid;
+	border-width: 1px;
+}
+	</style>
+</head>
+<body>
+
+
+<div id="wrapper">
+  <div id="content">
+  	<div class='mainjob' ng-show='mainjob'>
+  		<h3>{{mainjob.Name}}</h3>
+  		<div>Created at : {{mainjob.CreatedAt}}</div>
+  		<table class='summary'>
+  			<tr>
+  				<th>Stage</th>
+  				<th>Total</th>
+  				<th>Waiting</th>
+  				<th>Running</th>
+  				<th>Done</th>
+  				<th>Failed</th>
+  			</tr>
+  			<tr>
+  				<td>Map</th>
+  				<td>{{mainjob.NumMaps}}</th>
+  				<td>TODO</th>
+  				<td>TODO</th>
+  				<td>TODO</th>
+  				<td>TODO</th>
+  			</tr>
+  			<tr>
+  				<td>Reduce</th>
+  				<td>{{mainjob.NumReduces}}</th>
+  				<td>TODO</th>
+  				<td>TODO</th>
+  				<td>TODO</th>
+  				<td>TODO</th>
+  			</tr>
+  		</table>
+  		<div class='summary'>TODO: List of workers</div>
+  		<div style="clear: both"></div>
+  		<div ng-show='mainjob.Status == 4'>
+  			<h4>Results</h4>
+  			<ul>
+  				<li ng-repeat='result in mainjob.Results'>{{result}}</li>
+  			</ul>
+  		</div>
+  		<div>TODO: Some way to fetch and show worker logs goes here... </div>
+  	</div>
+  </div>
+  <div id="sidebar">
+  	<button ng-click="loadjobs()">Reload</button>
+  	<div ng-repeat='job in jobs' class="jobsummary"  ng-click='mainjob=showjob(job)'><jobsummary job='job'></div>
+  </div>
+  <div id="cleared"></div>
+</div>
+
+
+<script>
+
+window.statustext = {
+	0: "StatusInitialized",
+	1: "StatusMapStage",
+	2: "StatusReduceStage",
+	3: "StatusFail",
+	4: "StatusDone"
+}
+
+
+angular.module('gomr', [])
+
+.controller('MainController', function($scope, $http) {
+	$scope.jobs = [];
+
+	$scope.showjob = function(job) {
+		console.log(job);
+		$scope.mainjob = job;
+	}
+
+	$scope.loadjobs = function(){
+		$http.get("/api/joblist").success(function(data){
+			$scope.jobs = data;
+			console.log($scope.jobs);
+		})
+	}
+
+	$scope.loadjobs();
+
+})
+
+.directive('jobsummary', function () {
+
+  return {
+    restrict: 'E',
+    scope: {
+      job: '=job'
+    },
+    template: '<div>{{job.Name}}</div><div>{{statustext}}</div><div>{{job.CreatedAt}}</div>',
+    link: function(scope){
+    	scope.statustext = window.statustext[scope.job.Status]
+    }
+  }
+
+})
+;
+</script>
+</body>
+</html>

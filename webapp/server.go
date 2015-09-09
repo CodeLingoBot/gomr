@@ -28,6 +28,9 @@ func getjoblist(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 func main() {
 	router := httprouter.New()
 	router.GET("/api/joblist", getjoblist)
+	router.GET("/", func(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+		http.ServeFile(w, r, "static/index.html")
+	})
 	s := &http.Server{
 		Addr:           ":8181",
 		Handler:        gziphandler.GzipHandler(router),
