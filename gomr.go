@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,14 @@ const (
 	StatusFail        = 3
 	StatusDone        = 4
 )
+
+//Sortable list
+type Joblist []*Job
+
+//Sort interface
+func (a Joblist) Len() int           { return len(a) }
+func (a Joblist) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a Joblist) Less(i, j int) bool { return a[i].CreatedAt.Before(a[j].CreatedAt) }
 
 type Worker struct {
 	Map    func(input string, job *Job) (map[int]string, error)
@@ -67,7 +76,7 @@ type Job struct {
 }
 
 //Fetch all jobs, but only their status is populated, this is done to not access S3 where the real initial job is stored
-func FetchAllJobs() ([]*Job, error) {
+func FetchAllJobs() (Joblist, error) {
 	jobs := []*Job{}
 	env := NewEnvironment()
 	cl := env.GetEtcdClient()
@@ -86,7 +95,9 @@ func FetchAllJobs() ([]*Job, error) {
 			jobs = append(jobs, j)
 		}
 	}
-	return jobs, nil
+	sortedjobs := Joblist(jobs)
+	sort.Sort(sort.Reverse(sortedjobs))
+	return sortedjobs, nil
 }
 
 func FetchJob(jobname string) (*Job, error) {
