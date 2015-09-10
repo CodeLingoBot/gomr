@@ -59,20 +59,56 @@ func gzipfile(fname string, output io.WriteCloser) error {
 	return nil
 }
 
+//Tracks progress of each stage
+type StageProgress struct {
+	Total   int //Total tasks for this stage
+	Waiting int //Tasks waiting to be allocated
+	Running int //Tasks currently running
+	Done    int //Tasks finished
+	Failed  int //Tasks failed
+}
+
+func (p *StageProgress) update(resp *etcd.Response) error {
+	for _, node := range resp.Node.Nodes {
+		for _, subnode := range node.Nodes {
+			if strings.HasSuffix(subnode.Key, "status") {
+				status, err := strconv.Atoi(subnode.Value)
+				if err != nil {
+					return err
+				}
+				//log.Println(status)
+				switch status {
+				case StatusInitialized:
+					p.Running++
+				case StatusDone:
+					p.Done++
+				case StatusFail:
+					p.Failed++
+				}
+			}
+			//log.Println(subnode.Key)
+		}
+	}
+	p.Waiting = p.Total - (p.Done + p.Failed + p.Running)
+	return nil
+}
+
 type Job struct {
-	Params     map[string]interface{} //Arbitary Kv - must be json encodable
-	NamePrefix string                 //Optional - single word, only alphanumeric
-	Name       string                 //NamePrefix + some uuid. Generated automatically
-	Inputs     []string               //List of inputs, this should be something that makes sense to the map stage
-	Partitions int                    //Number of partitions desired... this is sent to map/reduce stage and can be ignored.
-	Status     int                    //StatusInitialized or StatusMapStage or StatusReduceStage or StatusFail or StatusDone
-	Results    []string               //Populated once job is complete
-	S3Bucket   string                 //S3 Bucket name
-	S3Prefix   string                 // /Job.Name/ gets appended
-	BinaryFile string                 //Path to binary file - auto created
-	NumMaps    int                    //Number of inputs for map stage a.k.a. len(Inputs)
-	NumReduces int                    //Number of inputs for reduce stage - populated once all map have finished
-	CreatedAt  time.Time              //Timestamp of when the Job was initially submitted - used for sorting
+	Params         map[string]interface{} //Arbitary Kv - must be json encodable
+	NamePrefix     string                 //Optional - single word, only alphanumeric
+	Name           string                 //NamePrefix + some uuid. Generated automatically
+	Inputs         []string               //List of inputs, this should be something that makes sense to the map stage
+	Partitions     int                    //Number of partitions desired... this is sent to map/reduce stage and can be ignored.
+	Status         int                    //StatusInitialized or StatusMapStage or StatusReduceStage or StatusFail or StatusDone
+	Results        []string               //Populated once job is complete
+	S3Bucket       string                 //S3 Bucket name
+	S3Prefix       string                 // /Job.Name/ gets appended
+	BinaryFile     string                 //Path to binary file - auto created
+	NumMaps        int                    //Number of inputs for map stage a.k.a. len(Inputs)
+	NumReduces     int                    //Number of inputs for reduce stage - populated once all map have finished
+	CreatedAt      time.Time              //Timestamp of when the Job was initially submitted - used for sorting
+	MapProgress    *StageProgress
+	ReduceProgress *StageProgress
 }
 
 //Fetch all jobs, but only their status is populated, this is done to not access S3 where the real initial job is stored
@@ -171,6 +207,27 @@ func (j *Job) UpdateStatus() error {
 		return err
 	}
 	j.NumReduces, err = strconv.Atoi(resp.Node.Value)
+	if err != nil {
+		return err
+	}
+	//Populate StageProgress
+	j.MapProgress = &StageProgress{Total: j.NumMaps}
+	j.ReduceProgress = &StageProgress{Total: j.NumReduces}
+
+	resp, err = cl.Get(eprefix+"map", false, true)
+	if err != nil {
+		return err
+	}
+	err = j.MapProgress.update(resp)
+	if err != nil {
+		return err
+	}
+
+	resp, err = cl.Get(eprefix+"reduce", false, true)
+	if err != nil {
+		return err
+	}
+	err = j.ReduceProgress.update(resp)
 	if err != nil {
 		return err
 	}
