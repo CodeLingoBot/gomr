@@ -109,6 +109,14 @@ angular.module('gomr', [])
 		$http.get("/api/joblist").success(function(data){
 			$scope.jobs = data;
 			console.log($scope.jobs);
+			//Update mainjob
+			if (($scope.mainjob) && ($scope.mainjob.Name)) {
+				$scope.jobs.forEach(function(job){
+					if ($scope.mainjob.Name == job.Name){
+						$scope.mainjob = job;
+					}
+				})
+			}
 		})
 	}
 
