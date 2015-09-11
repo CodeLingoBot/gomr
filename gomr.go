@@ -293,6 +293,7 @@ func GetIncompleteJobs() ([]*Task, error) {
 	jobs := []*Task{}
 	env := NewEnvironment()
 	cl := env.GetEtcdClient()
+	defer cl.Close()
 	resp, err := cl.Get("/gomr", false, false)
 	if err != nil {
 		return jobs, err
