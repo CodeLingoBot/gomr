@@ -116,6 +116,7 @@ func FetchAllJobs() (Joblist, error) {
 	jobs := []*Job{}
 	env := NewEnvironment()
 	cl := env.GetEtcdClient()
+	defer cl.Close()
 	resp, err := cl.Get("/gomr/", false, true)
 	if err != nil {
 		return jobs, err
@@ -141,6 +142,7 @@ func FetchJob(jobname string) (*Job, error) {
 	env := NewEnvironment()
 	//Get job data
 	cl := env.GetEtcdClient()
+	defer cl.Close()
 	eprefix := "/gomr/" + jobname + "/"
 
 	resp, err := cl.Get(eprefix+"s3bucket", false, true)
@@ -182,6 +184,7 @@ func (j *Job) UpdateStatus() error {
 	env := NewEnvironment()
 	//Get job data
 	cl := env.GetEtcdClient()
+	defer cl.Close()
 	eprefix := "/gomr/" + j.Name + "/"
 	resp, err := cl.Get(eprefix+"status", false, false)
 	if err != nil {
@@ -483,6 +486,7 @@ func (j *Job) Deploy(binfile string) (string, error) {
 	//TODO: Create etcd keys...
 
 	cl := env.GetEtcdClient()
+	defer cl.Close()
 	eprefix := "/gomr/" + j.Name + "/"
 	//Create directory
 	_, err = cl.CreateDir(eprefix, 0)
@@ -575,6 +579,7 @@ func (w *Worker) Execute(jobname string) {
 	env := NewEnvironment()
 	//Get job data
 	cl := env.GetEtcdClient()
+	defer cl.Close()
 	eprefix := "/gomr/" + jobname + "/"
 	//Check if job is already completed... if so then abort...
 	resp, err := cl.Get(eprefix+"status", false, false)
