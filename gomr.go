@@ -38,8 +38,8 @@ func (a Joblist) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a Joblist) Less(i, j int) bool { return a[i].CreatedAt.Before(a[j].CreatedAt) }
 
 type Worker struct {
-	Map    func(input string, job *Job) (map[int]string, error)
-	Reduce func(inputs []string, partition int, job *Job) (string, error)
+	Map    func(input string, job *Job, logger Logger) (map[int]string, error)
+	Reduce func(inputs []string, partition int, job *Job, logger Logger) (string, error)
 }
 
 func gzipfile(fname string, output io.WriteCloser) error {
@@ -577,6 +577,8 @@ func (w *Worker) Execute(jobname string) {
 	log.Println("Doing...", jobname)
 	log.Println("Looking for map jobs...")
 	env := NewEnvironment()
+	logger := env.GetLogger([]string{jobname})
+	defer logger.Close()
 	//Get job data
 	cl := env.GetEtcdClient()
 	defer cl.Close()
@@ -584,41 +586,49 @@ func (w *Worker) Execute(jobname string) {
 	//Check if job is already completed... if so then abort...
 	resp, err := cl.Get(eprefix+"status", false, false)
 	if err != nil {
-		log.Fatal(err)
+		logger.Critical(err)
+		return
 	}
 	status, err := strconv.Atoi(resp.Node.Value)
 	if err != nil {
-		log.Fatal(err)
+		logger.Critical(err)
+		return
 	}
 	if status == StatusDone {
-		log.Fatal("Job is already done...")
+		logger.Info("Job is already done...")
+		return
 	}
 
 	resp, err = cl.Get(eprefix+"s3bucket", false, true)
 	if err != nil {
-		log.Fatal(err)
+		logger.Critical(err)
+		return
 	}
 	s3bucket := resp.Node.Value
-	log.Println("s3bucket", s3bucket)
+	logger.Info("s3bucket", s3bucket)
 	resp, err = cl.Get(eprefix+"s3prefix", false, true)
 	if err != nil {
-		log.Fatal(err)
+		logger.Critical(err)
+		return
 	}
 	s3prefix := resp.Node.Value
-	log.Println("s3prefix", s3prefix)
+	logger.Info("s3prefix", s3prefix)
 	bucket, err := env.GetS3Bucket(s3bucket)
 	if err != nil {
-		log.Fatal(err)
+		logger.Critical(err)
+		return
 	}
 	data, err := bucket.Get(s3prefix + "jobdata.json")
 	if err != nil {
-		log.Fatal(err)
+		logger.Critical(err)
+		return
 	}
 	log.Println("jobdata", string(data))
 	j := &Job{}
 	err = json.Unmarshal(data, j)
 	if err != nil {
-		log.Fatal(err)
+		logger.Critical(err)
+		return
 	}
 
 	//Check if any map tasks need dooing...
@@ -627,47 +637,54 @@ func (w *Worker) Execute(jobname string) {
 		_, err = cl.CreateDir(eprefix+"map/"+strconv.Itoa(i)+"/", 0)
 		if err == nil {
 			//Means we could create it, nobody else has it
-			log.Println("Aquired lock for map task ", i)
+			logger.Info("Aquired lock for map task ", i)
 			//Update Status - we are obviously in map phase
 			_, err = cl.Update(eprefix+"status", strconv.Itoa(StatusMapStage), 0)
 			if err != nil {
-				log.Fatal(err)
+				logger.Critical(err)
+				return
 			}
 
 			//Create task status
 			_, err = cl.Create(eprefix+"map/"+strconv.Itoa(i)+"/"+"status", strconv.Itoa(StatusInitialized), 0)
 			if err != nil {
-				log.Fatal(err)
+				logger.Critical(err)
+				return
 			}
 
 			//Write input url
 			_, err = cl.Create(eprefix+"map/"+strconv.Itoa(i)+"/"+"input", input, 0)
 			if err != nil {
-				log.Fatal(err)
+				logger.Critical(err)
+				return
 			}
 			//Start map task
-			log.Println("Starting map task", i)
-			outputs, err := w.Map(input, j)
-			log.Println(outputs, err)
+			logger.Info("Starting map task", i)
+			outputs, err := w.Map(input, j, logger)
+			logger.Info(outputs, err)
 			if err != nil {
 				//TODO: Have retries for failures...
-				log.Fatal(err)
+				logger.Critical(err)
+				return
 			}
 			//Store outputs in etcd
 			_, err = cl.CreateDir(eprefix+"map/"+strconv.Itoa(i)+"/outputs/", 0)
 			if err != nil {
-				log.Fatal(err)
+				logger.Critical(err)
+				return
 			}
 			for idx, output := range outputs {
 				_, err = cl.Create(eprefix+"map/"+strconv.Itoa(i)+"/"+"outputs/"+strconv.Itoa(idx), output, 0)
 				if err != nil {
-					log.Fatal(err)
+					logger.Critical(err)
+					return
 				}
 			}
 			//Mark as done
 			_, err = cl.Update(eprefix+"map/"+strconv.Itoa(i)+"/"+"status", strconv.Itoa(StatusDone), 0)
 			if err != nil {
-				log.Fatal(err)
+				logger.Critical(err)
+				return
 			}
 		}
 	}
@@ -676,71 +693,83 @@ func (w *Worker) Execute(jobname string) {
 	for i, _ := range j.Inputs {
 		resp, err = cl.Get(eprefix+"map/"+strconv.Itoa(i)+"/"+"status", false, false)
 		if err != nil {
-			log.Fatal("Map tasks not yet allocated fully.. shouldnt get to here usually")
+			logger.Info("Map tasks not yet allocated fully.. shouldnt get to here usually")
+			return
+
 		}
 		status, err := strconv.Atoi(resp.Node.Value)
 		if err != nil {
-			log.Fatal(err)
+			logger.Critical(err)
+			return
 		}
 		if status != StatusDone {
-			log.Fatal("Map tasks not yet finished")
+			logger.Info("Map tasks not yet finished")
+			return
 		}
 		//Populate reduceinputs while we are at it...
 		resp, err = cl.Get(eprefix+"map/"+strconv.Itoa(i)+"/"+"outputs", false, true)
 		if err != nil {
-			log.Fatal(err)
+			logger.Critical(err)
+			return
 		}
 		for _, node := range resp.Node.Nodes {
 			splitted := strings.Split(node.Key, "/")
 			partitionid, err := strconv.Atoi(splitted[len(splitted)-1])
 			if err != nil {
-				log.Fatal(err)
+				logger.Critical(err)
+				return
 			}
 			reduceinputs[partitionid] = append(reduceinputs[partitionid], node.Value)
 			//log.Println(idx, node.Value)
 		}
 	}
-	log.Println("Map phase completed, now onto Reduce...")
+	logger.Info("Map phase completed, now onto Reduce...")
 
 	//Update NumReduces
 	_, err = cl.Update(eprefix+"numreduces", strconv.Itoa(len(reduceinputs)), 0)
 	if err != nil {
-		log.Fatal(err)
+		logger.Critical(err)
+		return
 	}
 
 	for i, inputs := range reduceinputs {
 		_, err = cl.CreateDir(eprefix+"reduce/"+strconv.Itoa(i)+"/", 0)
 		if err == nil {
 			//Meaning we aquired lock for this phase...
-			log.Println("Aquired lock for reduce task", i)
+			logger.Info("Aquired lock for reduce task", i)
 			//Update Status - we are obviously in map phase
 			_, err = cl.Update(eprefix+"status", strconv.Itoa(StatusReduceStage), 0)
 			if err != nil {
-				log.Fatal(err)
+				logger.Critical(err)
+				return
 			}
 
 			//Update Status
 			_, err = cl.Create(eprefix+"reduce/"+strconv.Itoa(i)+"/"+"status", strconv.Itoa(StatusInitialized), 0)
 			if err != nil {
-				log.Fatal(err)
+				logger.Critical(err)
+				return
 			}
 
 			//Start reduce task
-			log.Println("Starting reduce task", i)
-			output, err := w.Reduce(inputs, i, j)
-			log.Println(output, err)
+			logger.Info("Starting reduce task", i)
+			output, err := w.Reduce(inputs, i, j, logger)
+			logger.Info(output, err)
 			if err != nil {
-				log.Fatal(err)
+				logger.Critical(err)
+				return
 			}
 			//Write result to etcd
 			_, err = cl.Create(eprefix+"results/"+strconv.Itoa(i), output, 0)
 			if err != nil {
-				log.Fatal(err)
+				logger.Critical(err)
+				return
 			}
 			//Update Status as done
 			_, err = cl.Update(eprefix+"reduce/"+strconv.Itoa(i)+"/"+"status", strconv.Itoa(StatusDone), 0)
 			if err != nil {
-				log.Fatal(err)
+				logger.Critical(err)
+				return
 			}
 		}
 	}
@@ -748,22 +777,26 @@ func (w *Worker) Execute(jobname string) {
 	for i, _ := range reduceinputs {
 		resp, err = cl.Get(eprefix+"reduce/"+strconv.Itoa(i)+"/"+"status", false, false)
 		if err != nil {
-			log.Fatal("Reduce tasks not yet allocated fully.. shouldnt get to here usually")
+			logger.Info("Reduce tasks not yet allocated fully.. shouldnt get to here usually")
+			return
 		}
 		status, err := strconv.Atoi(resp.Node.Value)
 		if err != nil {
-			log.Fatal(err)
+			logger.Critical(err)
+			return
 		}
 		if status != StatusDone {
-			log.Fatal("Reduce tasks not yet finished")
+			logger.Info("Reduce tasks not yet finished")
+			return
 		}
 	}
 	//Got to here means everything is done....
-	log.Println("All tasks are done...")
+	logger.Info("All tasks are done...")
 	//Update status... doesnt matter if multiple workers invoke this...
 	_, err = cl.Update(eprefix+"status", strconv.Itoa(StatusDone), 0)
 	if err != nil {
-		log.Fatal(err)
+		logger.Critical(err)
+		return
 	}
 }
 
@@ -774,6 +807,7 @@ type Environment struct {
 	ETCD_SERVERS          []string //comma seperated contents of ETCD_SERVERS
 	AWS_REGION            string   //AWS region as detected by goamz ( https://godoc.org/github.com/mitchellh/goamz/aws#pkg-variables )
 	S3_BUCKET             string   //The default bucketname for new jobs
+	LOGGLY_TOKEN          string   //Token for loggly, if available
 }
 
 //Creates Environment data from reading environment variables
@@ -783,6 +817,7 @@ func NewEnvironment() *Environment {
 		AWS_SECRET_ACCESS_KEY: os.Getenv("AWS_SECRET_ACCESS_KEY"),
 		AWS_REGION:            os.Getenv("AWS_REGION"),
 		S3_BUCKET:             os.Getenv("S3_BUCKET"),
+		LOGGLY_TOKEN:          os.Getenv("LOGGLY_TOKEN"),
 	}
 	for _, server := range strings.Split(os.Getenv("ETCD_SERVERS"), ",") {
 		env.ETCD_SERVERS = append(env.ETCD_SERVERS, server)
@@ -829,4 +864,13 @@ func (env *Environment) GetS3Bucket(bucketname string) (*s3.Bucket, error) {
 //Returns etcd client
 func (env *Environment) GetEtcdClient() *etcd.Client {
 	return etcd.NewClient(env.ETCD_SERVERS)
+}
+
+//Returns logging implementation
+func (env *Environment) GetLogger(tags []string) Logger {
+	if env.LOGGLY_TOKEN != "" {
+		return NewLogglyConsoleLog(env.LOGGLY_TOKEN, tags)
+	} else {
+		return NewConsoleLog(tags)
+	}
 }

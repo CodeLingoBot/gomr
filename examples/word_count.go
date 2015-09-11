@@ -7,7 +7,6 @@ import (
 	"hash/fnv"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -25,10 +24,10 @@ func hash(s string, n int) int {
 
 //Runs once for each user provided input.
 //Don't panic, most of the low level things will be moved to library...
-func MyMap(input string, job *gomr.Job) (map[int]string, error) {
+func MyMap(input string, job *gomr.Job, logger gomr.Logger) (map[int]string, error) {
 	outputs := make(map[int]string)
 	var err error
-	log.Println("Rinning map on ", input)
+	logger.Info("Rinning map on ", input)
 	//Create one TempFile for each partition
 	tmpfiles := make([]*os.File, job.Partitions)
 	for i, _ := range tmpfiles {
@@ -67,7 +66,7 @@ func MyMap(input string, job *gomr.Job) (map[int]string, error) {
 
 //Run once for map outputs for particular key.
 //Don't panic, most of the low level things will be moved to library...
-func MyReduce(inputs []string, partition int, job *gomr.Job) (string, error) {
+func MyReduce(inputs []string, partition int, job *gomr.Job, logger gomr.Logger) (string, error) {
 	f, err := ioutil.TempFile("", "")
 	fname := f.Name()
 	if err != nil {
@@ -96,7 +95,7 @@ func MyReduce(inputs []string, partition int, job *gomr.Job) (string, error) {
 	}
 	sortedfname := sorted.Name()
 	sorted.Close()
-	log.Println("sorted", sortedfname)
+	logger.Info("sorted", sortedfname)
 	//The merged file is no longer needed cause we now use the sorted file.
 	os.Remove(fname)
 	//Create file for final output
