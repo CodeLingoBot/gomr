@@ -73,7 +73,14 @@
   				<li ng-repeat='result in mainjob.Results'>{{result}}</li>
   			</ul>
   		</div>
-  		<div>TODO: Some way to fetch and show worker logs goes here... </div>
+  		<div>
+  			<div ng-repeat='log in loglines'>
+  				<span>{{log.TimeStamp}}</span> - 
+  				<span>{{log.Level}} </span> - 
+  				<span>{{log.Hostname}} </span> - 
+  				<span>{{log.Text}} </span>
+  			</div>
+  		</div>
   	</div>
   </div>
   <div id="sidebar">
@@ -99,10 +106,21 @@ angular.module('gomr', [])
 
 .controller('MainController', function($scope, $http) {
 	$scope.jobs = [];
+	$scope.loglines = [];
+
+	$scope.loadlogs = function(jobid){
+		$scope.loglines = [];
+		$http.get("/api/log/" + jobid).success(function(data){
+			$scope.loglines = data;
+			console.log(data)
+		})
+	}
 
 	$scope.showjob = function(job) {
+		$scope.loglines = [];
 		console.log(job);
 		$scope.mainjob = job;
+		$scope.loadlogs(job.Name)
 	}
 
 	$scope.loadjobs = function(){

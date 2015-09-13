@@ -804,10 +804,13 @@ func (w *Worker) Execute(jobname string) {
 type Environment struct {
 	AWS_ACCESS_KEY_ID     string   // AWS_ACCESS_KEY_ID
 	AWS_SECRET_ACCESS_KEY string   //AWS_SECRET_ACCESS_KEY
-	ETCD_SERVERS          []string //comma seperated contents of ETCD_SERVERS
+	ETCD_SERVERS          []string //comma separated contents of ETCD_SERVERS
 	AWS_REGION            string   //AWS region as detected by goamz ( https://godoc.org/github.com/mitchellh/goamz/aws#pkg-variables )
 	S3_BUCKET             string   //The default bucketname for new jobs
 	LOGGLY_TOKEN          string   //Token for loggly, if available
+	LOGGLY_ACCOUNT        string   //Loggly account - used for retrieving logs only webapp needs it set
+	LOGGLY_USERNAME       string   //Loggly username - used for retrieving logs only webapp needs it set
+	LOGGLY_PASSWORD       string   //Loggly password - used for retrieving logs only webapp needs it set
 }
 
 //Creates Environment data from reading environment variables
@@ -818,6 +821,9 @@ func NewEnvironment() *Environment {
 		AWS_REGION:            os.Getenv("AWS_REGION"),
 		S3_BUCKET:             os.Getenv("S3_BUCKET"),
 		LOGGLY_TOKEN:          os.Getenv("LOGGLY_TOKEN"),
+		LOGGLY_ACCOUNT:        os.Getenv("LOGGLY_ACCOUNT"),
+		LOGGLY_USERNAME:       os.Getenv("LOGGLY_USERNAME"),
+		LOGGLY_PASSWORD:       os.Getenv("LOGGLY_PASSWORD"),
 	}
 	for _, server := range strings.Split(os.Getenv("ETCD_SERVERS"), ",") {
 		env.ETCD_SERVERS = append(env.ETCD_SERVERS, server)
@@ -869,7 +875,7 @@ func (env *Environment) GetEtcdClient() *etcd.Client {
 //Returns logging implementation
 func (env *Environment) GetLogger(tags []string) Logger {
 	if env.LOGGLY_TOKEN != "" {
-		return NewLogglyConsoleLog(env.LOGGLY_TOKEN, tags)
+		return NewLogglyConsoleLog(env.LOGGLY_TOKEN, tags, env.LOGGLY_ACCOUNT, env.LOGGLY_USERNAME, env.LOGGLY_PASSWORD)
 	} else {
 		return NewConsoleLog(tags)
 	}
