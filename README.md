@@ -9,6 +9,10 @@ I currently use [Disco](http://discoproject.org/). And was thinking if I can mak
 
 This repository is work in progress.
 
+## Philosophy
+
+Distributed computing is hard. We take the lazy way out and outsource the hard parts to other tools/services.
+
 ## Components
 
 1. etcd server/cluster - I have only tested with single etcd server so far.
@@ -29,7 +33,10 @@ The following environment variables need to be set. Adjust accordingly.
 	export AWS_REGION=ap-southeast-1 #AWS Region
 	export AWS_SECRET_ACCESS_KEY="xxxxxxxxxxxxxx"
 	export AWS_ACCESS_KEY_ID="xxxxxxxxxxxx"
-
+	export LOGGLY_TOKEN="xxxxxxxxx" #Optional - For centralized logging
+	export LOGGLY_ACCOUNT="xxxxx" #Optional - Only the webapp needs it to show logs in UI
+	export LOGGLY_USERNAME="xxxxxx" #Optional - Only the webapp needs it to show logs in UI
+	export LOGGLY_PASSWORD="xxxxx" #Optional - Only the webapp needs it to show logs in UI
 
 ## Example
 
@@ -53,6 +60,16 @@ Running word_count_execute.go might take some time depending on your upload band
 Check status/fetch result using 
 
 	go run $GOPATH/src/github.com/turbobytes/gomr/cli/fetchresult.go -jobname=ID_FROM_PREVIOUS_STEP -o=/path/to/resultfile
+
+
+## Web UI
+
+Make sure you have set the environment variables. If using loggly then remember to set `LOGGLY_ACCOUNT`, `LOGGLY_USERNAME` and `LOGGLY_PASSWORD`
+
+	cd $GOPATH/src/github.com/turbobytes/gomr/webapp
+	go run server.go
+
+Then visit http://localhost:8181/ in browser. Replace localhost with ip or hostname of the machine running it...
 
 ## Project status
 
