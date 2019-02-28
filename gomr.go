@@ -291,7 +291,7 @@ type Task struct {
 	BucketName string
 }
 
-//Return list of jobnames that arent complete...
+//GetIncompleteJobs returns list of jobnames that arent complete...
 func GetIncompleteJobs() ([]*Task, error) {
 	jobs := []*Task{}
 	env := NewEnvironment()
@@ -831,12 +831,12 @@ func NewEnvironment() *Environment {
 	return env
 }
 
-//Returns AWS auth from environment
+//GetAWSAuth returns AWS auth from environment
 func (env *Environment) GetAWSAuth() (aws.Auth, error) {
 	return aws.GetAuth(env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY)
 }
 
-//Returns AWS region from environment
+//GetAWSRegion returns AWS region from environment
 func (env *Environment) GetAWSRegion() (aws.Region, error) {
 	region, ok := aws.Regions[env.AWS_REGION]
 	if !ok {
@@ -845,7 +845,7 @@ func (env *Environment) GetAWSRegion() (aws.Region, error) {
 	return region, nil
 }
 
-//Returns S3 client from environment
+//GetS3 returns S3 client from environment
 func (env *Environment) GetS3() (*s3.S3, error) {
 	auth, err := env.GetAWSAuth()
 	if err != nil {
@@ -858,7 +858,7 @@ func (env *Environment) GetS3() (*s3.S3, error) {
 	return s3.New(auth, region), nil
 }
 
-//Returns S3 bucket from environment
+//GetS3Bucket returns S3 bucket from environment
 func (env *Environment) GetS3Bucket(bucketname string) (*s3.Bucket, error) {
 	s, err := env.GetS3()
 	if err != nil {
@@ -867,12 +867,12 @@ func (env *Environment) GetS3Bucket(bucketname string) (*s3.Bucket, error) {
 	return s.Bucket(bucketname), nil
 }
 
-//Returns etcd client
+//GetEtcdClient returns etcd client
 func (env *Environment) GetEtcdClient() *etcd.Client {
 	return etcd.NewClient(env.ETCD_SERVERS)
 }
 
-//Returns logging implementation
+//GetLogger returns logging implementation
 func (env *Environment) GetLogger(tags []string) Logger {
 	if env.LOGGLY_TOKEN != "" {
 		return NewLogglyConsoleLog(env.LOGGLY_TOKEN, tags, env.LOGGLY_ACCOUNT, env.LOGGLY_USERNAME, env.LOGGLY_PASSWORD)
